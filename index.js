@@ -44,9 +44,10 @@ io.on('connection', (socket) => {
       socket.join(roomId);
       roomManager.joinPeer(socket, roomId);
 
+      socket.to(roomId).emit('peerJoined', { socketId: socket.id });
+
       // 获取现有的 Producers
       const existingProducers = roomManager.getOtherProducers(socket.id);
-
       callback?.({
         rtpCapabilities: router.rtpCapabilities,
         existingProducers: existingProducers
