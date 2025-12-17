@@ -1,4 +1,5 @@
 require('module-alias/register');
+require('dotenv').config();
 const { createWorker } = require('mediasoup');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -23,8 +24,6 @@ async function runMediasoupWorker() {
     // 把 worker 注入给管理器
     roomManager.setWorker(worker);
 
-    console.log(`[系统] Mediasoup Worker 已启动 [pid:${worker.pid}]`);
-
     worker.on('died', () => {
       console.error('[错误] Mediasoup Worker 异常，2秒后退出...');
       setTimeout(() => process.exit(1), 2000);
@@ -33,7 +32,6 @@ async function runMediasoupWorker() {
     console.error('[错误] 启动 Worker 失败:', error);
   }
 }
-runMediasoupWorker();
 
 io.on('connection', (socket) => {
   // 加入房间
@@ -44,6 +42,7 @@ io.on('connection', (socket) => {
       socket.join(roomId);
       roomManager.joinPeer(socket, roomId);
 
+      socket.data.roomId = roomId;
       socket.to(roomId).emit('peerJoined', { socketId: socket.id });
 
       // 获取现有的 Producers
@@ -177,7 +176,8 @@ io.on('connection', (socket) => {
         producerId,
         kind: consumer.kind,
         rtpParameters: consumer.rtpParameters,
-        type: consumer.type
+        type: consumer.type,
+        socketId: socket.id
       });
     } catch (error) {
       console.error(`[错误] 订阅失败:`, error);
@@ -232,10 +232,16 @@ io.on('connection', (socket) => {
 
   // 断开连接
   socket.on('disconnect', () => {
-    roomManager.removePeer(socket.id);
+    const roomId = socket.data.roomId;
+    if (roomId) {
+      console.log(`[断开] 用户 ${socket.id} 退出了房间: ${roomId}`);
+      roomManager.removePeer(socket.id);
+      socket.to(roomId).emit('peerLeave', { socketId: socket.id });
+    }
   });
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`Mediasoup Server 监听端口 ${PORT}`);
+httpServer.listen(PORT, async () => {
+  await runMediasoupWorker();
+  console.log(`[系统] Server Running At http://127.0.0.1:${PORT}`);
 });

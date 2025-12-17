@@ -4,13 +4,16 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon index.js"
+    "dev": "cross-env NODE_ENV=development DEBUG=mediasoup:* nodemon index.js",
+    "prod": "cross-env NODE_ENV=production DEBUG=mediasoup:* nodemon index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "cross-env": "^10.1.0",
+    "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "mediasoup": "^3.19.12",
     "module-alias": "^2.2.3",
