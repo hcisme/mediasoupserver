@@ -1,7 +1,7 @@
 class RoomManager {
   constructor() {
     /**
-     * rooms: Map<roomId, { router, peers: Set<socketId> }>
+     * rooms: Map<roomId, { router, peers: Set<socketId>, audioLevelObserver: AudioLevelObserver }>
      */
     this.rooms = new Map();
     /**
@@ -36,18 +36,39 @@ class RoomManager {
    */
   async getOrCreateRouter(roomId, mediaCodecs) {
     let room = this.rooms.get(roomId);
-    if (room) return room.router;
+    if (room) return { router: room.router };
 
     // 创建新房间
     console.log(`[房间] 创建新路由, 房间号: ${roomId}`);
     const router = await this.worker.createRouter({ mediaCodecs });
+    const audioLevelObserver = await router.createAudioLevelObserver({
+      maxEntries: 50, // 音量最大的前 N 个人
+      threshold: -80,
+      interval: 500
+    });
+
+    audioLevelObserver.on('volumes', (volumes) => {
+      const simpleVolumes = volumes.map((v) => ({
+        audioProducerId: v.producer.id,
+        volume: v.volume
+      }));
+
+      const currentRoom = this.getRoom(roomId);
+      if (currentRoom) {
+        currentRoom.peers.forEach((socketId) => {
+          const peer = this.getPeer(socketId);
+          peer?.socket?.emit('activeSpeaker', simpleVolumes);
+        });
+      }
+    });
 
     this.rooms.set(roomId, {
       router,
-      peers: new Set()
+      peers: new Set(),
+      audioLevelObserver
     });
 
-    return router;
+    return { router };
   }
 
   /**
@@ -83,25 +104,22 @@ class RoomManager {
 
     console.log(`[清理] 开始清理用户 ${socketId} 的资源...`);
 
-    // 1. 关闭 Mediasoup 资源
+    // 关闭 Mediasoup 资源
     consumers.forEach((c) => c.close());
     producers.forEach((p) => p.close());
     transports.forEach((t) => t.close());
 
-    // 2. 从房间移除
     if (room) {
       room.peers.delete(socketId);
       console.log(`[房间] 用户离开房间 ${roomId} (剩余人数: ${room.peers.size})`);
 
-      // 3. 房间空了则销毁 Router
+      // 房间空了 销毁 Router
       if (room.peers.size === 0) {
         console.log(`[房间] 房间 ${roomId} 为空，销毁 Router`);
         room.router.close();
         this.rooms.delete(roomId);
       }
     }
-
-    // 4. 删除 Peer 记录
     this.peers.delete(socketId);
   }
 
@@ -118,7 +136,7 @@ class RoomManager {
     const producerList = [];
     room.peers.forEach((otherSocketId) => {
       if (otherSocketId !== socketId) {
-        const otherPeer = this.peers.get(otherSocketId);
+        const otherPeer = this.getPeer(otherSocketId);
         otherPeer?.producers.forEach((producer) => {
           producerList.push({
             producerId: producer.id,
@@ -130,6 +148,17 @@ class RoomManager {
       }
     });
     return producerList;
+  }
+
+  /**
+   * 获取房间内"其他人"的 Socket ID 列表
+   */
+  getOtherPeers(socketId) {
+    const peer = this.peers.get(socketId);
+    if (!peer) return [];
+    const room = this.rooms.get(peer.roomId);
+    if (!room) return [];
+    return Array.from(room.peers).filter((id) => id !== socketId);
   }
 
   /**
@@ -153,7 +182,22 @@ class RoomManager {
    */
   addProducer(socketId, producer) {
     const peer = this.peers.get(socketId);
-    if (peer) peer.producers.push(producer);
+    if (peer) {
+      peer.producers.push(producer);
+
+      if (producer.kind === 'audio') {
+        const room = this.getRoom(peer.roomId);
+        const observer = room?.audioLevelObserver;
+        if (observer) {
+          console.log(`[音频] 将 Producer ${producer.id} 加入音量监测`);
+          // 将该 Producer 加入监测队列
+          // 注意：Mediasoup 会自动处理 Producer 关闭后的移除工作
+          observer.addProducer({ producerId: producer.id }).catch((err) => {
+            console.error(`[错误] 添加音频监测失败:`, err);
+          });
+        }
+      }
+    }
   }
 
   /**

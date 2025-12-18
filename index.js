@@ -37,19 +37,24 @@ io.on('connection', (socket) => {
   // 加入房间
   socket.on('joinRoom', async ({ roomId }, callback) => {
     try {
-      const router = await roomManager.getOrCreateRouter(roomId, routerConfig.mediaCodecs);
+      const { router } = await roomManager.getOrCreateRouter(
+        roomId,
+        routerConfig.mediaCodecs
+      );
 
       socket.join(roomId);
       roomManager.joinPeer(socket, roomId);
 
       socket.data.roomId = roomId;
+      // 给房间的其他人发消息
       socket.to(roomId).emit('peerJoined', { socketId: socket.id });
 
-      // 获取现有的 Producers
+      const existingPeers = roomManager.getOtherPeers(socket.id);
       const existingProducers = roomManager.getOtherProducers(socket.id);
       callback?.({
         rtpCapabilities: router.rtpCapabilities,
-        existingProducers: existingProducers
+        existingProducers,
+        existingPeers
       });
     } catch (error) {
       console.error(`[错误] 加入房间失败:`, error);
@@ -78,7 +83,7 @@ io.on('connection', (socket) => {
       roomManager.addTransport(socket.id, transport);
 
       callback?.({
-        id: transport.id,
+        transportId: transport.id,
         iceParameters: transport.iceParameters,
         iceCandidates: transport.iceCandidates,
         dtlsParameters: transport.dtlsParameters
