@@ -2,10 +2,10 @@
   "name": "mediasoupserver",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development DEBUG=mediasoup:* nodemon index.js",
-    "prod": "cross-env NODE_ENV=production DEBUG=mediasoup:* nodemon index.js"
+    "dev": "cross-env NODE_ENV=development DEBUG=mediasoup:* nodemon src/index.js",
+    "prod": "cross-env NODE_ENV=production DEBUG=mediasoup:* nodemon src/index.js"
   },
   "keywords": [],
   "author": "",
@@ -26,6 +26,6 @@
     "nodemon": "^3.1.11"
   },
   "_moduleAliases": {
-    "@": "./"
+    "@": "./src/"
   }
 }

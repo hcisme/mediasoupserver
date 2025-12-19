@@ -37,10 +37,7 @@ io.on('connection', (socket) => {
   // 加入房间
   socket.on('joinRoom', async ({ roomId }, callback) => {
     try {
-      const { router } = await roomManager.getOrCreateRouter(
-        roomId,
-        routerConfig.mediaCodecs
-      );
+      const { router } = await roomManager.getOrCreateRouter(roomId, routerConfig.mediaCodecs);
 
       socket.join(roomId);
       roomManager.joinPeer(socket, roomId);
@@ -104,12 +101,16 @@ io.on('connection', (socket) => {
   });
 
   // 发布 (Produce)
-  socket.on('produce', async ({ transportId, kind, rtpParameters }, callback) => {
+  socket.on('produce', async ({ transportId, kind, rtpParameters, appData }, callback) => {
     const transport = roomManager.getTransport(socket.id, transportId);
     if (!transport) return callback?.({ error: `未找到 ID 为 "${transportId}" 的传输通道` });
 
     try {
-      const producer = await transport.produce({ kind, rtpParameters });
+      const producer = await transport.produce({
+        kind,
+        rtpParameters,
+        appData: appData || {}
+      });
 
       // 保存到 Manager
       roomManager.addProducer(socket.id, producer);
@@ -122,20 +123,8 @@ io.on('connection', (socket) => {
         producerId: producer.id,
         socketId: socket.id,
         kind: producer.kind,
-        paused: producer.paused
-      });
-
-      // 监听网络质量 (Score)
-      producer.on('score', (score) => {
-        // 广播通知房间其他人
-        socket.to(peer.roomId).emit('producerScore', {
-          producerId: producer.id,
-          score: score
-        });
-        socket.emit('producerScore', {
-          producerId: producer.id,
-          score: score
-        });
+        paused: producer.paused,
+        appData: producer.appData
       });
 
       producer.on('transportclose', () => producer.close());
@@ -232,6 +221,16 @@ io.on('connection', (socket) => {
       });
 
       callback?.();
+    }
+  });
+
+  // 关闭 Producer
+  socket.on('closeProducer', async ({ producerId }, callback) => {
+    try {
+      roomManager.closeProducer(socket.id, producerId);
+      callback?.();
+    } catch (error) {
+      console.error(`[错误] 关闭 Producer 失败:`, error);
     }
   });
 

@@ -142,7 +142,8 @@ class RoomManager {
             producerId: producer.id,
             socketId: otherSocketId,
             kind: producer.kind,
-            paused: producer.paused
+            paused: producer.paused,
+            appData: producer.appData
           });
         });
       }
@@ -197,6 +198,22 @@ class RoomManager {
           });
         }
       }
+    }
+  }
+
+  /**
+   * 手动关闭某个 Producer
+   */
+  closeProducer(socketId, producerId) {
+    const peer = this.peers.get(socketId);
+    if (!peer) return;
+
+    const producer = peer.producers.find((p) => p.id === producerId);
+
+    if (producer) {
+      producer.close();
+      peer.producers = peer.producers.filter((p) => p.id !== producerId);
+      console.log(`[关闭] 用户 ${peer.socket.id} 主动关闭了流 ${producerId}`);
     }
   }
 
